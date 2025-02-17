@@ -18,7 +18,7 @@ Pause here, no need to install the plugin until the download is complete.
 
 ## Download 
 
-5) Run `python3 -m pip requirements.txt` to install script requirements
+5) Run `python3 -m pip install -r requirements.txt` to install script requirements
 6) Run `python3 bookp-manual.py`
 7) This will open a Chrome window, pass the captcha if presented and then login to Amazon and leave the window open.
 8) Press Return on the script to continue and follow the instructions.

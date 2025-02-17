@@ -9,11 +9,11 @@ Additionally this version only uses Selenium, without ChromeDriver as ChromeDriv
 ### Setup
 
 * *Install Python3*
-* Run `pip install -r requirements.txt` to install necesary packages
+* Run `python3 -m pip install -r requirements.txt` to install necesary packages
 
 ### Run
 
-* Run `python bookp-manual.py`
+* Run `python3 bookp-manual.py`
 * Wait for Chrome window to pop up, and login - DO NOT CLOSE THE WINDOW!
 > Note: Every time you run this you will have to login, it doesn't store your Amazon session.
 * Return to script and press Return
