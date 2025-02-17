@@ -12,7 +12,7 @@ import urllib.parse
 from argparse import ArgumentParser
 from selenium import webdriver
 
-user_agent = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'}
+user_agent = {'User-Agent': 'krumpli'}
 logger = logging.getLogger(__name__)
 
 def create_session():
