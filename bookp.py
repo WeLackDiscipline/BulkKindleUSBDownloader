@@ -216,8 +216,8 @@ def main():
 
     download_books(user_agent, cookies, devices[choice], asins, args.outputdir)
 
-    print("\n\nAll done!\nNow you can use apprenticeharper's DeDRM tools " \
-          "(https://github.com/apprenticeharper/DeDRM_tools)\n" \
+    print("\n\nAll done!\nNow you can use nodrm's DeDRM tools " \
+          "(https://github.com/nodrm/DeDRM_tools)\n" \
           "with the following serial number to remove DRM: " +
           devices[choice]['deviceSerialNumber'])
 
