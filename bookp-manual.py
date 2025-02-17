@@ -33,7 +33,7 @@ def create_session():
 
     if os.path.exists("script-cookies"):
         logger.info("Found some cookies, injecting them and refreshing the browser, this takes a moment.")
-
+        print("Found credentials - logging you in, stand by!")
         with open("script-cookies", 'rb') as f:
             cookies = pickle.load(f)
         for cookie in cookies:
@@ -44,8 +44,7 @@ def create_session():
 
     logger.info("Waiting for login...")
 
-    if check_if_logged_in(browser.page_source) == False :
-        input("\nSwitch to browser window, login, and then return here and press enter to continue. \nIf the cookies already logged you in come back and press enter.")
+    input("\nSwitch to browser window, login, and then return here and press enter to continue.")
 
     logger.info("Getting CSRF token")
     browser.get('https://www.amazon.com/hz/mycd/digital-console/contentlist/booksAll/dateDsc/')
