@@ -33,7 +33,7 @@ def create_session(email, password, oath, browser_visible=True, proxy=None):
     browser.get('https://www.amazon.com')
 
     logger.info("Logging in")
-    browser.find_element(By.CSS_SELECTOR,'#nav-signin-tooltip > a.nav-action-signin-button').click()
+    browser.find_element(By.CSS_SELECTOR,'#gw-sign-in-button > span > a').click()
     browser.find_element(By.ID,"ap_email").clear()
     browser.find_element(By.ID, "ap_email").send_keys(email)
     browser.find_element(By.CSS_SELECTOR, '.a-button-input').click()
@@ -52,6 +52,11 @@ def create_session(email, password, oath, browser_visible=True, proxy=None):
     if match:
         csrf_token = match.group(1)
 
+    custid = None  # Initialize custid to a default value
+    match = re.search('customerId: \"(.*)\"', browser.page_source)
+    if match:
+        custid = match.group(1)
+
     cookies = {}
     for cookie in browser.get_cookies():
         cookies[cookie['name']] = cookie['value']
@@ -60,7 +65,7 @@ def create_session(email, password, oath, browser_visible=True, proxy=None):
     if not browser_visible:
         display.stop();
 
-    return cookies, csrf_token
+    return cookies, csrf_token, custid
 
 
 """
@@ -139,16 +144,16 @@ def get_asins(user_agent, cookies, csrf_token):
     return asins
 
 
-def download_books(user_agent, cookies, device, asins, directory):
+def download_books(user_agent, cookies, device, asins, custid, directory):
     logger.info("Downloading {} books".format(len(asins)))
     cdn_url = 'https://cde-ta-g7g.amazon.com/FionaCDEServiceEngine/FSDownloadContent'
-    cdn_params = 'type=EBOK&key={}&fsn={}&device_type={}&customerId=**putcustomeridhere**&authPool=Amazon'
+    cdn_params = 'type=EBOK&key={}&fsn={}&device_type={}&customerId={}&authPool=Amazon'
 
     for asin in asins:
         try:
-            params = cdn_params.format(asin, device['deviceSerialNumber'], device['deviceType'])
+            params = cdn_params.format(asin, device['deviceSerialNumber'], device['deviceType'], custid)
             r = requests.get(cdn_url, params=params, headers=user_agent, cookies=cookies, stream=True)
-            name = re.findall("filename\*=UTF-8''(.+)", r.headers['Content-Disposition'])[0]
+            name = re.findall("filename\\*=UTF-8''(.+)", r.headers['Content-Disposition'])[0]
             name = urllib.parse.unquote(name)
             name = name.replace('/', '_')
             with open(os.path.join(directory, name), 'wb') as f:
@@ -170,6 +175,7 @@ def main():
     parser.add_argument("--outputdir", help="download directory (default: books)", default="books")
     parser.add_argument("--proxy", help="HTTP proxy server", default=None)
     parser.add_argument("--asin", help="list of ASINs to download", nargs='*')
+    parser.add_argument("--logfile", help="name of file to write log to", default=None)
     args = parser.parse_args()
 
     if args.verbose:
@@ -180,6 +186,11 @@ def main():
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+    
+    logfilename = args.logfile
+    if logfilename:
+        handlerLog = logging.FileHandler(logfilename)
+        logger.addHandler(handlerLog)
 
     password = args.password
     if not password:
@@ -195,7 +206,7 @@ def main():
     elif not os.path.isdir(args.outputdir):
         os.mkdir(args.outputdir)
 
-    cookies, csrf_token = create_session(args.email, password, oath,
+    cookies, csrf_token, custid = create_session(args.email, password, oath,
                                          browser_visible=args.showbrowser, proxy=args.proxy)
     if not args.asin:
         asins = get_asins(user_agent, cookies, csrf_token)
@@ -214,13 +225,13 @@ def main():
         if choice in range(len(devices)):
             break
 
-    download_books(user_agent, cookies, devices[choice], asins, args.outputdir)
+    download_books(user_agent, cookies, devices[choice], asins, custid, args.outputdir)
 
     print("\n\nAll done!\nNow you can use nodrm's DeDRM tools " \
           "(https://github.com/nodrm/DeDRM_tools)\n" \
           "with the following serial number to remove DRM: " +
           devices[choice]['deviceSerialNumber'])
-
+    logger.info('Download complete, open with Serial Number: ' + devices[choice]['deviceSerialNumber'])
 
 if __name__ == '__main__':
     try:
