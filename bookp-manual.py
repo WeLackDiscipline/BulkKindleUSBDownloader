@@ -8,6 +8,8 @@ import re
 import requests
 import sys
 import urllib.parse
+import pickle
+import time
 
 from argparse import ArgumentParser
 from selenium import webdriver
@@ -16,16 +18,34 @@ user_agent = {'User-Agent': 'krumpli'}
 logger = logging.getLogger(__name__)
 
 def create_session():
-
     logger.info("Starting browser")
+
+    print("Starting Chrome window and activing. If already logged in you'll be brought back here in a minute, otherwise login and come back.")
+
     options = webdriver.ChromeOptions()
     browser = webdriver.Chrome()
+    cookies = {}
 
     logger.info("Loading www.amazon.com")
     browser.get('https://www.amazon.com')
 
+    logger.info("Checking if you're already logged in")
+
+    if os.path.exists("script-cookies"):
+        logger.info("Found some cookies, injecting them and refreshing the browser, this takes a moment.")
+
+        with open("script-cookies", 'rb') as f:
+            cookies = pickle.load(f)
+        for cookie in cookies:
+            browser.add_cookie(cookie)
+
+        browser.get('https://www.amazon.com')
+        time.sleep(5)
+
     logger.info("Waiting for login...")
-    input("Switch to browser window, login, and then return here and press enter to continue.")
+
+    if check_if_logged_in(browser.page_source) == False :
+        input("\nSwitch to browser window, login, and then return here and press enter to continue. \nIf the cookies already logged you in come back and press enter.")
 
     logger.info("Getting CSRF token")
     browser.get('https://www.amazon.com/hz/mycd/digital-console/contentlist/booksAll/dateDsc/')
@@ -50,10 +70,15 @@ def create_session():
     for cookie in browser.get_cookies():
         cookies[cookie['name']] = cookie['value']
 
+    with open("script-cookies", 'wb') as f:
+        pickle.dump(browser.get_cookies(), f)
+
     browser.quit()
 
     return cookies, csrf_token, custid
 
+def check_if_logged_in(page_source):
+    return re.search('customerId: \"(.*)\"', page_source)
 
 """
 NOTE: This function is not used currently, because the download URL can be
@@ -82,6 +107,8 @@ def get_download_url(user_agent, cookies, csrf_token, asin, device_id):
 
 def get_devices(user_agent, cookies, csrf_token):
     logger.info("Getting device list")
+    print("Loading device list, this may take a moment....")
+
     data_json = {'param': {'GetDevices': {}}}
 
     r = requests.post('https://www.amazon.com/hz/mycd/ajax',
@@ -89,11 +116,13 @@ def get_devices(user_agent, cookies, csrf_token):
                       headers=user_agent, cookies=cookies)
     devices = json.loads(r.text)["GetDevices"]["devices"]
 
-    return [device for device in devices if 'deviceSerialNumber' in device]
+    return [device for device in devices if 'deviceSerialNumber' in device and device['deviceClassification'] == 'KINDLE_DEVICES']
 
 
 def get_asins(user_agent, cookies, csrf_token):
     logger.info("Getting e-book list")
+    print("Loading book list, this may take a moment...")
+
     startIndex = 0
     batchSize = 100
     data_json = {
@@ -134,6 +163,8 @@ def get_asins(user_agent, cookies, csrf_token):
 
 def download_books(user_agent, cookies, device, asins, custid, directory):
     logger.info("Downloading {} books".format(len(asins)))
+    print("Starting downloads of {} books, this is slow...".format(len(asins)))
+
     cdn_url = 'https://cde-ta-g7g.amazon.com/FionaCDEServiceEngine/FSDownloadContent'
     cdn_params = 'type=EBOK&key={}&fsn={}&device_type={}&customerId={}&authPool=Amazon'
 
@@ -191,7 +222,7 @@ def main():
         asins = args.asin
 
     devices = get_devices(user_agent, cookies, csrf_token)
-    print("Choose a Kindle ereader device - no iOS/Android or PC/Mac readers, or other Amazon devices.")
+    print("\n\nChoose a Kindle ereader device:")
     for i in range(len(devices)):
         print(" " + str(i) + ". " + devices[i]['deviceAccountName'])
     while True:
@@ -211,6 +242,12 @@ def main():
           "with the following serial number to remove DRM: " +
           devices[choice]['deviceSerialNumber'])
 
+    if os.path.exists("script-cookies"):
+        print("\n\nWARNING: If you're all done be sure to delete script-cookies")
+        if input("Type delete to clean up cookies, or anything else to exit.").lower() == "delete" :
+            os.remove("script-cookies")
+        else:
+            print("Leaving cookies alone, please delete them when you're done!")
 
 if __name__ == '__main__':
     try:

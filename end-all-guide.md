@@ -2,6 +2,10 @@
 
 The instructions across the internet are often vague, confusing, and downright misleading. So after managing to get it all to work myself I've written these instructions for those who come later.
 
+## Caveats
+
+This is only tested with exporting Kindle books targeting a Kindle e-reader (Kindle, Kindle Paper White, Kindle Oasis, etc), you cannot target a non-Kindle device and have this work such as an Apple or Android device, or a PC and Mac. I don't have a Kindle Fire so do not know if this works for that or not. If you don't have a Kindle e-reader to select from this may not work.
+
 ## Today is 2/16/2025
 
 If you're reading this in the far future it's likely non of this will work as Amazon is removing the download to USB ability that this guide depends on, specifcally that you can avoid all the mess with KFX encryption, which is much more invovled in bypassing. 
