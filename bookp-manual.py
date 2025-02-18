@@ -8,65 +8,76 @@ import re
 import requests
 import sys
 import urllib.parse
+import pickle
+import time
 
 from argparse import ArgumentParser
-from pyvirtualdisplay import Display
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 
 user_agent = {'User-Agent': 'krumpli'}
 logger = logging.getLogger(__name__)
 
-
-def create_session(email, password, oath, browser_visible=True, proxy=None):
-    if not browser_visible:
-        display = Display(visible=0)
-        display.start()
-
+def create_session():
     logger.info("Starting browser")
+
+    print("Starting Chrome window and activing. If already logged in you'll be brought back here in a minute, otherwise login and come back.")
+
     options = webdriver.ChromeOptions()
-    if proxy:
-        options.add_argument('--proxy-server=' + proxy)
     browser = webdriver.Chrome()
+    cookies = {}
 
     logger.info("Loading www.amazon.com")
     browser.get('https://www.amazon.com')
 
-    logger.info("Logging in")
-    browser.find_element(By.CSS_SELECTOR,'#gw-sign-in-button > span > a').click()
-    browser.find_element(By.ID,"ap_email").clear()
-    browser.find_element(By.ID, "ap_email").send_keys(email)
-    browser.find_element(By.CSS_SELECTOR, '.a-button-input').click()
-    browser.find_element(By.ID,"ap_password").clear()
-    browser.find_element(By.ID,"ap_password").send_keys(password)
-    browser.find_element(By.ID,"signInSubmit").click()
-    browser.find_element(By.ID, "auth-mfa-otpcode").clear()
-    browser.find_element(By.ID, "auth-mfa-otpcode").send_keys(oath)
-    browser.find_element(By.ID, "auth-signin-button").click()
+    logger.info("Checking if you're already logged in")
+
+    if os.path.exists("script-cookies"):
+        logger.info("Found some cookies, injecting them and refreshing the browser, this takes a moment.")
+        print("Found credentials - logging you in, stand by!")
+        with open("script-cookies", 'rb') as f:
+            cookies = pickle.load(f)
+        for cookie in cookies:
+            browser.add_cookie(cookie)
+
+        browser.get('https://www.amazon.com')
+        time.sleep(5)
+
+    logger.info("Waiting for login...")
+
+    input("\nSwitch to browser window, login, and then return here and press enter to continue.")
 
     logger.info("Getting CSRF token")
     browser.get('https://www.amazon.com/hz/mycd/digital-console/contentlist/booksAll/dateDsc/')
-
-    csrf_token = None  # Initialize csrf_token to a default value
-    match = re.search('var csrfToken = "(.*)";', browser.page_source)
-    if match:
-        csrf_token = match.group(1)
 
     custid = None  # Initialize custid to a default value
     match = re.search('customerId: \"(.*)\"', browser.page_source)
     if match:
         custid = match.group(1)
+    else:
+        print("Failed to find your customer ID, appears browser was not logged in!")
+        exit(1)
+
+    csrf_token = None  # Initialize csrf_token to a default value
+    match = re.search('var csrfToken = "(.*)";', browser.page_source)
+    if match:
+        csrf_token = match.group(1)
+    else:
+        print("Failed to get CSFR")
+        exit(1)
 
     cookies = {}
     for cookie in browser.get_cookies():
         cookies[cookie['name']] = cookie['value']
 
+    with open("script-cookies", 'wb') as f:
+        pickle.dump(browser.get_cookies(), f)
+
     browser.quit()
-    if not browser_visible:
-        display.stop();
 
     return cookies, csrf_token, custid
 
+def check_if_logged_in(page_source):
+    return re.search('customerId: \"(.*)\"', page_source)
 
 """
 NOTE: This function is not used currently, because the download URL can be
@@ -95,6 +106,8 @@ def get_download_url(user_agent, cookies, csrf_token, asin, device_id):
 
 def get_devices(user_agent, cookies, csrf_token):
     logger.info("Getting device list")
+    print("Loading device list, this may take a moment....")
+
     data_json = {'param': {'GetDevices': {}}}
 
     r = requests.post('https://www.amazon.com/hz/mycd/ajax',
@@ -102,11 +115,13 @@ def get_devices(user_agent, cookies, csrf_token):
                       headers=user_agent, cookies=cookies)
     devices = json.loads(r.text)["GetDevices"]["devices"]
 
-    return [device for device in devices if 'deviceSerialNumber' in device]
+    return [device for device in devices if 'deviceSerialNumber' in device and device['deviceClassification'] == 'KINDLE_DEVICES']
 
 
 def get_asins(user_agent, cookies, csrf_token):
     logger.info("Getting e-book list")
+    print("Loading book list, this may take a moment...")
+
     startIndex = 0
     batchSize = 100
     data_json = {
@@ -141,11 +156,14 @@ def get_asins(user_agent, cookies, csrf_token):
         else:
             break
 
+    print("Found " + str(len(asins)) + " books!")
     return asins
 
 
 def download_books(user_agent, cookies, device, asins, custid, directory):
     logger.info("Downloading {} books".format(len(asins)))
+    print("Starting downloads of {} books, this is slow...".format(len(asins)))
+
     cdn_url = 'https://cde-ta-g7g.amazon.com/FionaCDEServiceEngine/FSDownloadContent'
     cdn_params = 'type=EBOK&key={}&fsn={}&device_type={}&customerId={}&authPool=Amazon'
 
@@ -159,8 +177,11 @@ def download_books(user_agent, cookies, device, asins, custid, directory):
             with open(os.path.join(directory, name), 'wb') as f:
                 for chunk in r.iter_content(chunk_size=512):
                     f.write(chunk)
+            print('Downloaded ' + asin + ': ' + name)
             logger.info('Downloaded ' + asin + ': ' + name)
         except Exception as e:
+            print('Warning: Failed to download ' + asin + ' check logs for additional details.')
+            print(e)
             logger.debug(e)
             logger.error('Failed to download ' + asin)
 
@@ -168,12 +189,7 @@ def download_books(user_agent, cookies, device, asins, custid, directory):
 def main():
     parser = ArgumentParser(description="Amazon e-book downloader.")
     parser.add_argument("--verbose", help="show info messages", action="store_true")
-    parser.add_argument("--showbrowser", help="display browser while creating session.", action="store_true")
-    parser.add_argument("--email", help="Amazon account e-mail address", required=True)
-    parser.add_argument("--password", help="Amazon account password", default=None)
-    parser.add_argument("--oath", help="Amazon account oath code", default=None)
     parser.add_argument("--outputdir", help="download directory (default: books)", default="books")
-    parser.add_argument("--proxy", help="HTTP proxy server", default=None)
     parser.add_argument("--asin", help="list of ASINs to download", nargs='*')
     parser.add_argument("--logfile", help="name of file to write log to", default=None)
     args = parser.parse_args()
@@ -192,29 +208,20 @@ def main():
         handlerLog = logging.FileHandler(logfilename)
         logger.addHandler(handlerLog)
 
-    password = args.password
-    if not password:
-        password = getpass.getpass("Your Amazon password: ")
-
-    oath = args.oath
-    if not oath:
-        oath = getpass.getpass("Your Amazon Oath: ")
-
     if os.path.isfile(args.outputdir):
         logger.error("Output directory is a file!")
         return -1
     elif not os.path.isdir(args.outputdir):
         os.mkdir(args.outputdir)
 
-    cookies, csrf_token, custid = create_session(args.email, password, oath,
-                                         browser_visible=args.showbrowser, proxy=args.proxy)
+    cookies, csrf_token, custid = create_session()
     if not args.asin:
         asins = get_asins(user_agent, cookies, csrf_token)
     else:
         asins = args.asin
 
     devices = get_devices(user_agent, cookies, csrf_token)
-    print("Please choose which device you want to download your e-books to!")
+    print("\n\nChoose a Kindle ereader device:")
     for i in range(len(devices)):
         print(" " + str(i) + ". " + devices[i]['deviceAccountName'])
     while True:
@@ -227,11 +234,19 @@ def main():
 
     download_books(user_agent, cookies, devices[choice], asins, custid, args.outputdir)
 
+    logger.info('Download complete, open with Serial Number: ' + devices[choice]['deviceSerialNumber'] + ' Name: ' + devices[choice]['deviceAccountName'])
+    
     print("\n\nAll done!\nNow you can use nodrm's DeDRM tools " \
           "(https://github.com/nodrm/DeDRM_tools)\n" \
           "with the following serial number to remove DRM: " +
           devices[choice]['deviceSerialNumber'])
-    logger.info('Download complete, open with Serial Number: ' + devices[choice]['deviceSerialNumber'])
+
+    if os.path.exists("script-cookies"):
+        print("\n\nWARNING: If you're all done be sure to delete script-cookies")
+        if input("Type delete to clean up cookies, or anything else to exit.").lower() == "delete" :
+            os.remove("script-cookies")
+        else:
+            print("Leaving cookies alone, please delete them when you're done!")
 
 if __name__ == '__main__':
     try:

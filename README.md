@@ -71,3 +71,7 @@ optional arguments:
   * [requests](https://pypi.org/project/requests/)
   * [PyVirtualDisplay](https://pypi.org/project/PyVirtualDisplay/)
   * [selenium](https://pypi.org/project/selenium/)
+
+## Having Run Time or Login Problems?
+
+Try using [bookp-manual.py](README-MANUAL.md) which makes logging in manual. This is useful if you are hitting errors because sometimes Amazon throws up a recaptha the script can't account for. It also removes the need for VirtualDisplay and ChromeDriver, which can be dificult to get running. 
